@@ -1,3 +1,12 @@
+# Librerías
+import os
+import uuid
+import warnings
+
+import mlflow
+
+warnings.filterwarnings("ignore")
+
 from homework.src._internals.calculate_metrics import calculate_metrics
 from homework.src._internals.parse_argument import parse_argument
 from homework.src._internals.prepare_data import prepare_data
@@ -11,25 +20,74 @@ RANDOM_STATE = 123456
 
 
 def main():
-
     args = parse_argument()
     model = select_model(args)
 
     x_train, x_test, y_train, y_test = prepare_data(
-        file_path=FILE_PATH,
-        test_size=TEST_SIZE,
-        random_state=RANDOM_STATE,
+        file_path=FILE_PATH, test_size=TEST_SIZE, random_state=RANDOM_STATE
     )
 
-    model.fit(x_train, y_train)
+    # Establece un directorio de usuario para hacer el tracking
+    working_directory = os.path.abspath(os.getcwd())
+    mlflow_runs_path = os.path.join(working_directory, "my_mlruns")
+    if not os.path.exists(mlflow_runs_path):
+        os.makedirs(mlflow_runs_path)
+    mlflow.set_tracking_uri(mlflow_runs_path)
 
-    mse, mae, r2 = calculate_metrics(model, x_train, y_train)
-    print_metrics("Training metrics", mse, mae, r2)
+    # Autotracking para sklearn
+    # Autotracking para sklearn
+    mlflow.sklearn.autolog(
+        log_input_examples=False,
+        log_model_signatures=True,
+        log_models=True,
+        disable=False,
+        exclusive=True,
+        disable_for_unsupported_versions=False,
+        silent=False,
+        max_tuning_runs=10,
+        log_post_training_metrics=True,
+        serialization_format="cloudpickle",
+    )
 
-    mse, mae, r2 = calculate_metrics(model, x_test, y_test)
-    print_metrics("Testing metrics", mse, mae, r2)
+    # Se inicia un experimento en MLflow
+    mlflow.set_experiment("wine_quality_experiment")
+    run_name = f"{args.model}_{uuid.uuid4().hex[:8]}"
+    with mlflow.start_run(run_name=run_name):
+        run = mlflow.active_run()
+        print(f"Active run_id: {run.info.run_id}")
 
-    save_model_if_better(model, x_test, y_test)
+        mlflow.log_param("file_path", FILE_PATH)
+        mlflow.log_param("test_size", TEST_SIZE)
+        mlflow.log_param("random_state", RANDOM_STATE)
+        # mlflow.log_param("model_type", args.model)
+
+        ## Log de los parámetros específicos de cada tipo de modelo
+        if args.model == "elasticnet":
+            mlflow.log_param("alpha", args.alpha)
+            mlflow.log_param("l1_ratio", args.l1_ratio)
+        elif args.model == "knn":
+            mlflow.log_param("n_neighbors", args.n_neighbors)
+
+        model.fit(x_train, y_train)
+
+        mse, mae, r2 = calculate_metrics(model, x_train, y_train)
+        print_metrics("Training metrics", mse, mae, r2)
+
+        # Log de las métricas de entrenamiento
+        mlflow.log_metric("train_mse", mse)
+        mlflow.log_metric("train_mae", mae)
+        mlflow.log_metric("train_r2", r2)
+
+        mse, mae, r2 = calculate_metrics(model, x_test, y_test)
+        print_metrics("Testing metrics", mse, mae, r2)
+
+        # Log de las métricas de test
+        mlflow.log_metric("test_mse", mse)
+        mlflow.log_metric("test_mae", mae)
+        mlflow.log_metric("test_r2", r2)
+
+        # Ya no se requiere
+        # save_model_if_better(model, x_test, y_test)
 
 
 if __name__ == "__main__":

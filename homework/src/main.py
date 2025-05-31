@@ -27,12 +27,15 @@ def main():
         file_path=FILE_PATH, test_size=TEST_SIZE, random_state=RANDOM_STATE
     )
 
-    # Establece un directorio de usuario para hacer el tracking
+    # Establece un directorio de usuario para hacer el tracking (compatible con MLflow en Windows)
     working_directory = os.path.abspath(os.getcwd())
     mlflow_runs_path = os.path.join(working_directory, "my_mlruns")
-    if not os.path.exists(mlflow_runs_path):
-        os.makedirs(mlflow_runs_path)
-    mlflow.set_tracking_uri(mlflow_runs_path)
+
+    # Asegura que el directorio existe
+    os.makedirs(mlflow_runs_path, exist_ok=True)
+
+    # MLflow necesita URI con formato válido (file:///C:/...)
+    mlflow.set_tracking_uri(f"file:///{mlflow_runs_path.replace(os.sep, '/')}")
 
     # Autotracking para sklearn
     # Autotracking para sklearn
@@ -47,6 +50,7 @@ def main():
         max_tuning_runs=10,
         log_post_training_metrics=True,
         serialization_format="cloudpickle",
+        registered_model_name=None,
     )
 
     # Se inicia un experimento en MLflow
